@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adivinhe o filme</title>
+<style>
+  :root {
+    --fundo: #15131d;
+    --texto: #f4efe6;
+    --destaque: #f2b84b;
+    --vidro: rgba(244, 239, 230, 0.12);
+  }
+
+  * { box-sizing: border-box; margin: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--fundo);
+    color: var(--texto);
+    font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+    overflow: hidden;
+  }
+
+  .palco {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 110px;
+  }
+
+  .palco img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 6px;
+  }
+
+  /* Aparece quando a imagem ainda não foi colocada na pasta */
+  .faltando {
+    width: min(900px, 100%);
+    aspect-ratio: 16 / 9;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    border: 3px dashed var(--vidro);
+    border-radius: 12px;
+    text-align: center;
+    padding: 20px;
+    font-size: 1.1rem;
+  }
+  .faltando code {
+    color: var(--destaque);
+    font-size: 1.25rem;
+  }
+
+  /* Cartão de resposta (opcional) */
+  .resposta {
+    text-align: center;
+    font-size: clamp(2rem, 6vw, 4.5rem);
+    font-weight: 700;
+    color: var(--destaque);
+  }
+
+  .selo {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
+    z-index: 2;
+  }
+  .selo span {
+    background: var(--vidro);
+    padding: 8px 18px;
+    border-radius: 999px;
+    font-weight: 700;
+  }
+  .selo .pontos { background: var(--destaque); color: #1b1608; }
+
+  .seta {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 68px;
+    height: 68px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--vidro);
+    color: var(--texto);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    z-index: 2;
+    transition: background 0.15s, transform 0.15s;
+  }
+  .seta:hover:not(:disabled) { background: var(--destaque); color: #1b1608; }
+  .seta:active:not(:disabled) { transform: translateY(-50%) scale(0.94); }
+  .seta:disabled { opacity: 0.25; cursor: default; }
+  .seta:focus-visible { outline: 3px solid var(--destaque); outline-offset: 3px; }
+  .seta svg { width: 30px; height: 30px; }
+  #anterior { left: 20px; }
+  #proximo  { right: 20px; }
+
+  @media (max-width: 640px) {
+    .palco { padding: 70px 12px 90px; }
+    .seta { top: auto; bottom: 18px; transform: none; width: 56px; height: 56px; }
+    .seta:active:not(:disabled) { transform: scale(0.94); }
+    #anterior { left: 24px; }
+    #proximo  { right: 24px; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="selo" id="selo" aria-live="polite">
+    <span id="seloFilme"></span>
+    <span class="pontos" id="seloPontos"></span>
+  </div>
+
+  <button class="seta" id="anterior" aria-label="Imagem anterior">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4 7 12l8 8"/></svg>
+  </button>
+
+  <main class="palco" id="palco"></main>
+
+  <button class="seta" id="proximo" aria-label="Próxima imagem">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 4 8 8-8 8"/></svg>
+  </button>
+
+<script>
+  /* =====================================================
+     CONFIGURE AQUI
+     - Coloque as imagens na pasta "imagens"
+     - Cada filme tem 3 imagens: a 1ª vale 3 pontos,
+       a 2ª vale 2 pontos e a 3ª vale 1 ponto
+     - Para adicionar filmes, copie uma linha e mude os nomes
+     ===================================================== */
+  const FILMES = [
+    { nome: "Filme 1", imagens: ["imagens/filme1-1.jpg", "imagens/filme1-2.jpg", "imagens/filme1-3.jpg"] },
+    { nome: "Filme 2", imagens: ["imagens/filme2-1.jpg", "imagens/filme2-2.jpg", "imagens/filme2-3.jpg"] },
+    { nome: "Filme 3", imagens: ["imagens/filme3-1.jpg", "imagens/filme3-2.jpg", "imagens/filme3-3.jpg"] },
+    { nome: "Filme 4", imagens: ["imagens/filme4-1.jpg", "imagens/filme4-2.jpg", "imagens/filme4-3.jpg"] },
+    { nome: "Filme 5", imagens: ["imagens/filme5-1.jpg", "imagens/filme5-2.jpg", "imagens/filme5-3.jpg"] }
+  ];
+
+  const CONFIG = {
+    mostrarSelo: true,       // mostra "Filme X" e os pontos no topo (false = só imagem e setas)
+    mostrarResposta: false   // true = depois da 3ª imagem aparece um slide com o nome do filme
+  };
+  /* ===================================================== */
+
+  const palco = document.getElementById("palco");
+  const selo = document.getElementById("selo");
+  const seloFilme = document.getElementById("seloFilme");
+  const seloPontos = document.getElementById("seloPontos");
+  const btnAnterior = document.getElementById("anterior");
+  const btnProximo = document.getElementById("proximo");
+
+  // Monta a sequência de slides: 3 imagens por filme (+ resposta, se ativada)
+  const slides = [];
+  FILMES.forEach((filme, f) => {
+    filme.imagens.forEach((src, i) => {
+      slides.push({ tipo: "imagem", src, filme: f, pontos: 3 - i });
+    });
+    if (CONFIG.mostrarResposta) {
+      slides.push({ tipo: "resposta", filme: f, nome: filme.nome });
+    }
+  });
+
+  let atual = 0;
+
+  function criarImagem(src) {
+    const img = new Image();
+    img.alt = "Imagem do quiz";
+    img.src = src;
+    img.onerror = () => {
+      const aviso = document.createElement("div");
+      aviso.className = "faltando";
+      aviso.innerHTML = "<span>Coloque a imagem aqui:</span><code></code>";
+      aviso.querySelector("code").textContent = src;
+      img.replaceWith(aviso);
+    };
+    return img;
+  }
+
+  function mostrar(indice) {
+    atual = Math.max(0, Math.min(slides.length - 1, indice));
+    const s = slides[atual];
+    palco.innerHTML = "";
+
+    if (s.tipo === "imagem") {
+      palco.appendChild(criarImagem(s.src));
+      seloFilme.textContent = "Filme " + (s.filme + 1);
+      seloPontos.textContent = s.pontos + (s.pontos === 1 ? " ponto" : " pontos");
+      seloPontos.style.display = "";
+    } else {
+      const r = document.createElement("div");
+      r.className = "resposta";
+      r.textContent = s.nome;
+      palco.appendChild(r);
+      seloFilme.textContent = "Filme " + (s.filme + 1);
+      seloPontos.style.display = "none";
+    }
+
+    selo.style.display = CONFIG.mostrarSelo ? "" : "none";
+    btnAnterior.disabled = atual === 0;
+    btnProximo.disabled = atual === slides.length - 1;
+
+    // Carrega a próxima imagem antes, para a troca ser instantânea
+    const prox = slides[atual + 1];
+    if (prox && prox.tipo === "imagem") new Image().src = prox.src;
+  }
+
+  btnAnterior.addEventListener("click", () => mostrar(atual - 1));
+  btnProximo.addEventListener("click", () => mostrar(atual + 1));
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === " ") { e.preventDefault(); mostrar(atual + 1); }
+    if (e.key === "ArrowLeft") { e.preventDefault(); mostrar(atual - 1); }
+  });
+
+  // Deslizar o dedo no celular
+  let inicioX = null;
+  document.addEventListener("touchstart", (e) => { inicioX = e.touches[0].clientX; }, { passive: true });
+  document.addEventListener("touchend", (e) => {
+    if (inicioX === null) return;
+    const dx = e.changedTouches[0].clientX - inicioX;
+    if (Math.abs(dx) > 50) mostrar(atual + (dx < 0 ? 1 : -1));
+    inicioX = null;
+  });
+
+  mostrar(0);
+</script>
+</body>
+</html>
